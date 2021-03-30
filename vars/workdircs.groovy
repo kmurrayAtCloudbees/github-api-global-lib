@@ -1,7 +1,7 @@
 def call(Map config=[:]) {
     echo "Path: $PWD"
     echo "workdir: ${config.workdir}"
-    dir "${config.workdir}"
+//    dir "${config.workdir}"
     sh "echo ${config.workdir} is in the lib"
     sh "echo Docker, umm I mean BUILDAH, build complete!"
     }
