@@ -3,10 +3,10 @@ def call(Map config=[:]) {
     echo "workdir: ${config.workdir}"
     dir ("${config.workdir}") {
           sh """
-	     sudo docker ps
+	     docker ps
              pwd
              cp -R ${config.workdir}/src/main/resources/certs ${config.workdir}/.
-             sudo buildah bud .
+             buildah bud .
 	  """
     }
     sh "echo ${config.workdir} is in the lib"
