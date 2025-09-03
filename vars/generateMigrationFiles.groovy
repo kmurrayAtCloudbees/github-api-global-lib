@@ -7,17 +7,15 @@ def call(Map config = [:]) {
         parentFolderPath: "",  // "" or "ROOT" for all folders
         activityThresholdDays: 180,
         maxJobsPerFolder: 5000,
-        migrationDepth: 3,  // Depth level from RIGHT (e.g., org/team/project = last 3 dirs before job)
+        migrationDepth: 3,  // Depth level FROM RIGHT (e.g., team/project/env = 3)
         excludePatterns: [],
-        targetControllers: ["controllerSource", "controllerTarget"], // Your defaults
+        targetControllers: ["controllerSource", "controllerTarget"],
         outputDir: ".",
         verbose: true,
         dryRun: false
     ]
 
-    // Merge with user-supplied config
     config = defaultConfig + config
-
     def results = [:]
 
     script {
@@ -31,7 +29,7 @@ def call(Map config = [:]) {
 
             def VERBOSE = config.verbose
             def ACTIVITY_THRESHOLD_DAYS = config.activityThresholdDays
-            def MIGRATION_DEPTH = config.migrationDepth
+            def MIGRATION_DEPTH = config.migrationDepth ?: 0  // 0 = per-job default
 
             def sixMonthsAgo = new Date(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(ACTIVITY_THRESHOLD_DAYS))
             def dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
@@ -49,15 +47,17 @@ def call(Map config = [:]) {
             def folderJobCounts = [:]
             def stats = [totalJobs: 0, activeFolders: 0, inactiveFolders: 0, foldersAnalyzed: 0]
 
-            def getMigrationFolder = { String fullPath ->
+            def getMigrationUnit = { String fullPath, String jobName ->
                 def parts = fullPath.tokenize('/')
-
-                if (parts.size() >= MIGRATION_DEPTH + 1) {
-                    def start = parts.size() - MIGRATION_DEPTH - 1
-                    def end = parts.size() - 1
+                if (!MIGRATION_DEPTH || MIGRATION_DEPTH == 0) {
+                    return "${fullPath}/${jobName}"
+                }
+                if (parts.size() >= MIGRATION_DEPTH) {
+                    def start = parts.size() - MIGRATION_DEPTH
+                    def end = parts.size()
                     return parts[start..<end].join('/')
                 } else {
-                    return "[UNRESOLVED] ${fullPath}"
+                    return "[UNRESOLVED] ${fullPath}/${jobName}"
                 }
             }
 
@@ -77,7 +77,6 @@ def call(Map config = [:]) {
             analyzeFolder = { folder, currentPath ->
                 try {
                     def folderPath = currentPath ? "${currentPath}/${folder.name}" : folder.name
-                    def migrationFolder = getMigrationFolder(folderPath)
 
                     def jobsInFolder = []
                     def subfoldersInFolder = []
@@ -90,32 +89,25 @@ def call(Map config = [:]) {
                         }
                     }
 
-                    def hasActiveJobs = false
-                    def totalJobs = jobsInFolder.size()
-
                     jobsInFolder.each { job ->
                         stats.totalJobs++
                         def status = getJobActivityStatus(job)
-                        if (status == "ACTIVE") {
-                            hasActiveJobs = true
-                        }
-                    }
+                        def migrationFolder = getMigrationUnit(folderPath, job.name)
 
-                    if (totalJobs > 0) {
                         if (!folderJobCounts.containsKey(migrationFolder)) {
                             folderJobCounts[migrationFolder] = 0
                         }
-                        folderJobCounts[migrationFolder] += totalJobs
+                        folderJobCounts[migrationFolder]++
 
-                        if (hasActiveJobs) {
+                        if (status == "ACTIVE") {
                             folderClassification[migrationFolder] = "ACTIVE"
                         } else if (!folderClassification.containsKey(migrationFolder)) {
                             folderClassification[migrationFolder] = "INACTIVE"
                         }
-                    }
 
-                    if (VERBOSE && totalJobs > 0) {
-                        println "Folder: ${folderPath} → Migration Unit: ${migrationFolder} (${totalJobs} jobs, hasActive: ${hasActiveJobs})"
+                        if (VERBOSE) {
+                            println "Job: ${folderPath}/${job.name} → Group: ${migrationFolder}, Status: ${status}"
+                        }
                     }
 
                     subfoldersInFolder.each { subfolder ->
@@ -140,7 +132,7 @@ def call(Map config = [:]) {
                         } else if (item instanceof Job) {
                             stats.totalJobs++
                             def status = getJobActivityStatus(item)
-                            def migrationFolder = "ROOT"
+                            def migrationFolder = getMigrationUnit("", item.name)
 
                             if (!folderJobCounts.containsKey(migrationFolder)) {
                                 folderJobCounts[migrationFolder] = 0
@@ -151,6 +143,10 @@ def call(Map config = [:]) {
                                 folderClassification[migrationFolder] = "ACTIVE"
                             } else if (!folderClassification.containsKey(migrationFolder)) {
                                 folderClassification[migrationFolder] = "INACTIVE"
+                            }
+
+                            if (VERBOSE) {
+                                println "Job: ${item.name} (ROOT) → Group: ${migrationFolder}, Status: ${status}"
                             }
                         }
                     } catch (Exception e) {
