@@ -1,11 +1,11 @@
 // CloudBees CI Migration - Job Classification and File Generation
 // Shared Library Step for generating migration input files
+
 import jenkins.model.Jenkins
 import hudson.model.*
 import com.cloudbees.hudson.plugins.folder.Folder
 import java.text.SimpleDateFormat
 import java.util.concurrent.TimeUnit
-
 
 def call(Map config = [:]) {
     // Default configuration
@@ -24,11 +24,27 @@ def call(Map config = [:]) {
     config = defaultConfig + config
     def results = [:]
 
+    // NEW: Centralized helper to compute migration folder or per-job unit
+    def buildMigrationUnit = { path, jobName ->
+        def depth = config.migrationDepth ?: 0
+        def parts = path.tokenize('/')
+
+        if (depth == 0) {
+            return "${path ? path + '/' : ''}${jobName}"
+        }
+
+        if (parts.size() >= depth) {
+            def start = parts.size() - depth
+            return parts[start..<parts.size()].join('/')
+        }
+
+        return "[UNRESOLVED] ${path}/${jobName}"
+    }
+
     script {
         def analyzeJenkinsJobs = {
             def VERBOSE = config.verbose
             def ACTIVITY_THRESHOLD_DAYS = config.activityThresholdDays
-            def MIGRATION_DEPTH = config.migrationDepth ?: 0  // 0 = per-job default
 
             def sixMonthsAgo = new Date(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(ACTIVITY_THRESHOLD_DAYS))
             def dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
@@ -37,7 +53,7 @@ def call(Map config = [:]) {
                 println "=== CloudBees CI Migration File Generator ==="
                 println "Parent Folder: ${config.parentFolderPath}"
                 println "Activity Threshold: ${ACTIVITY_THRESHOLD_DAYS} days"
-                println "Migration Depth (from right): ${MIGRATION_DEPTH}"
+                println "Migration Depth (from right): ${config.migrationDepth}"
                 println "Target Controllers: ${config.targetControllers.join(', ')}"
                 println "=" * 60
             }
@@ -45,20 +61,6 @@ def call(Map config = [:]) {
             def folderClassification = [:]
             def folderJobCounts = [:]
             def stats = [totalJobs: 0, activeFolders: 0, inactiveFolders: 0, foldersAnalyzed: 0]
-
-            def getMigrationUnit = { String fullPath, String jobName ->
-                def parts = fullPath.tokenize('/')
-                if (!MIGRATION_DEPTH || MIGRATION_DEPTH == 0) {
-                    return "${fullPath}/${jobName}"
-                }
-                if (parts.size() >= MIGRATION_DEPTH) {
-                    def start = parts.size() - MIGRATION_DEPTH
-                    def end = parts.size()
-                    return parts[start..<end].join('/')
-                } else {
-                    return "[UNRESOLVED] ${fullPath}/${jobName}"
-                }
-            }
 
             def getJobActivityStatus = { job ->
                 try {
@@ -76,7 +78,6 @@ def call(Map config = [:]) {
             analyzeFolder = { folder, currentPath ->
                 try {
                     def folderPath = currentPath ? "${currentPath}/${folder.name}" : folder.name
-
                     def jobsInFolder = []
                     def subfoldersInFolder = []
 
@@ -91,7 +92,7 @@ def call(Map config = [:]) {
                     jobsInFolder.each { job ->
                         stats.totalJobs++
                         def status = getJobActivityStatus(job)
-                        def migrationFolder = getMigrationUnit(folderPath, job.name)
+                        def migrationFolder = buildMigrationUnit(folderPath, job.name)
 
                         if (!folderJobCounts.containsKey(migrationFolder)) {
                             folderJobCounts[migrationFolder] = 0
@@ -122,7 +123,7 @@ def call(Map config = [:]) {
             def analyzeAllRoot = (config.parentFolderPath == "ROOT" || config.parentFolderPath == "")
 
             if (analyzeAllRoot) {
-                if (VERBOSE) println "Analyzing ALL Jenkins root folders and jobs"
+                if (config.verbose) println "Analyzing ALL Jenkins root folders and jobs"
 
                 jenkins.getItems().each { item ->
                     try {
@@ -131,7 +132,7 @@ def call(Map config = [:]) {
                         } else if (item instanceof Job) {
                             stats.totalJobs++
                             def status = getJobActivityStatus(item)
-                            def migrationFolder = getMigrationUnit("", item.name)
+                            def migrationFolder = buildMigrationUnit("", item.name)
 
                             if (!folderJobCounts.containsKey(migrationFolder)) {
                                 folderJobCounts[migrationFolder] = 0
@@ -149,7 +150,7 @@ def call(Map config = [:]) {
                             }
                         }
                     } catch (Exception e) {
-                        if (VERBOSE) println "ERROR processing root item ${item.name}: ${e.message}"
+                        if (config.verbose) println "ERROR processing root item ${item.name}: ${e.message}"
                     }
                 }
             } else {
@@ -168,7 +169,7 @@ def call(Map config = [:]) {
                             }
                         }
                         if (!found) {
-                            if (VERBOSE) println "ERROR: Folder '${part}' not found in path '${folderPath}'"
+                            if (config.verbose) println "ERROR: Folder '${part}' not found in path '${folderPath}'"
                             return null
                         }
                     }
@@ -178,7 +179,7 @@ def call(Map config = [:]) {
 
                 def parentFolder = findFolderByPath(config.parentFolderPath)
                 if (parentFolder) {
-                    if (VERBOSE) println "Found parent folder: ${config.parentFolderPath}"
+                    if (config.verbose) println "Found parent folder: ${config.parentFolderPath}"
                     analyzeFolder(parentFolder, "")
                 } else {
                     error("Parent folder '${config.parentFolderPath}' not found!")
