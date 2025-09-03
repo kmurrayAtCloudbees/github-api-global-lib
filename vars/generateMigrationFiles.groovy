@@ -19,8 +19,7 @@ def call(Map config = [:]) {
     def results = [:]
 
     script {
-        @NonCPS
-        def analyzeJenkinsJobs() {
+        def analyzeJenkinsJobs = {
             import jenkins.model.Jenkins
             import hudson.model.*
             import com.cloudbees.hudson.plugins.folder.Folder
