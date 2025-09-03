@@ -1,5 +1,11 @@
 // CloudBees CI Migration - Job Classification and File Generation
 // Shared Library Step for generating migration input files
+import jenkins.model.Jenkins
+import hudson.model.*
+import com.cloudbees.hudson.plugins.folder.Folder
+import java.text.SimpleDateFormat
+import java.util.concurrent.TimeUnit
+
 
 def call(Map config = [:]) {
     // Default configuration
@@ -20,12 +26,6 @@ def call(Map config = [:]) {
 
     script {
         def analyzeJenkinsJobs = {
-            import jenkins.model.Jenkins
-            import hudson.model.*
-            import com.cloudbees.hudson.plugins.folder.Folder
-            import java.text.SimpleDateFormat
-            import java.util.concurrent.TimeUnit
-
             def VERBOSE = config.verbose
             def ACTIVITY_THRESHOLD_DAYS = config.activityThresholdDays
             def MIGRATION_DEPTH = config.migrationDepth ?: 0  // 0 = per-job default
