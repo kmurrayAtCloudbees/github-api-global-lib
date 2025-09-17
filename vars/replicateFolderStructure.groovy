@@ -106,7 +106,8 @@ def call(Map config = [:]) {
         }
 
         // Sort folders using Jenkins-safe method
-        return allFolders.sort { a, b -> a.compareTo(b) }
+        Collections.sort(allFolders)
+        return allFolders
     }
 
     def discoveredFolders = discoverAllFolders()
@@ -125,34 +126,40 @@ def call(Map config = [:]) {
         discoveredFolders: discoveredFolders,
         folderCommands: folderCommands,
         stats: [
-            totalFolders: discoveredFolders.size(),
-            targetControllers: controllers.size(),
-            totalCommands: folderCommands.size()
+            totalFolders: discoveredFolders?.size() ?: 0,
+            targetControllers: controllers?.size() ?: 0,
+            totalCommands: folderCommands?.size() ?: 0
         ]
     ]
 
     if (config.verbose) {
         echo "\n=== FOLDER STRUCTURE REPLICATION SUMMARY ==="
-        echo "Total Folders Discovered: ${discoveredFolders.size()}"
-        echo "Target Controllers: ${controllers.size()}"
-        echo "Total Replication Commands: ${folderCommands.size()}"
+        echo "Total Folders Discovered: ${discoveredFolders?.size() ?: 0}"
+        echo "Target Controllers: ${controllers?.size() ?: 0}"
+        echo "Total Replication Commands: ${folderCommands?.size() ?: 0}"
         echo ""
-        echo "Discovered Folders:"
-        for (def folder : discoveredFolders) {
-            echo "  - ${folder}"
+        
+        if (discoveredFolders && discoveredFolders.size() > 0) {
+            echo "Discovered Folders:"
+            for (def folder : discoveredFolders) {
+                echo "  - ${folder}"
+            }
         }
+        
         echo ""
-        echo "Replication Commands:"
-        // Limit output to prevent overwhelming logs - Jenkins-safe way
-        def maxDisplay = 10
-        def commandCount = 0
-        for (def command : folderCommands) {
-            if (commandCount < maxDisplay) {
-                echo "  ${command}"
-                commandCount++
-            } else {
-                echo "  ... and ${folderCommands.size() - maxDisplay} more commands"
-                break
+        if (folderCommands && folderCommands.size() > 0) {
+            echo "Replication Commands:"
+            // Limit output to prevent overwhelming logs - Jenkins-safe way
+            def maxDisplay = 10
+            def commandCount = 0
+            for (def command : folderCommands) {
+                if (commandCount < maxDisplay) {
+                    echo "  ${command}"
+                    commandCount++
+                } else {
+                    echo "  ... and ${folderCommands.size() - maxDisplay} more commands"
+                    break
+                }
             }
         }
     }
@@ -160,21 +167,25 @@ def call(Map config = [:]) {
     if (!config.dryRun) {
         // Generate all-folders.txt
         def foldersText = ""
-        for (def folder : discoveredFolders) {
-            foldersText += folder + "\n"
+        if (discoveredFolders && discoveredFolders.size() > 0) {
+            for (def folder : discoveredFolders) {
+                foldersText += folder + "\n"
+            }
         }
         writeFile file: "${config.outputDir}/all-folders.txt", text: foldersText
 
         // Generate folder-replication.csv
         def csvText = "folder_path,target_controller\n"
-        for (def command : folderCommands) {
-            csvText += command + "\n"
+        if (folderCommands && folderCommands.size() > 0) {
+            for (def command : folderCommands) {
+                csvText += command + "\n"
+            }
         }
         writeFile file: "${config.outputDir}/folder-replication.csv", text: csvText
 
         echo "\n=== FOLDER STRUCTURE FILES GENERATED ==="
-        echo "- all-folders.txt (${discoveredFolders.size()} folders)"
-        echo "- folder-replication.csv (${folderCommands.size()} commands)"
+        echo "- all-folders.txt (${discoveredFolders?.size() ?: 0} folders)"
+        echo "- folder-replication.csv (${folderCommands?.size() ?: 0} commands)"
     } else {
         echo "\n=== DRY RUN MODE — Folder structure files would be generated ==="
         echo "Output directory: ${config.outputDir}"
