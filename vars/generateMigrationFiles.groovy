@@ -18,7 +18,9 @@ def call(Map config = [:]) {
         targetControllers: ["controllerSource", "controllerTarget"],
         outputDir: ".",
         verbose: true,
-        dryRun: false
+        dryRun: false,
+        excludeBuildHistory: true,  // New parameter
+        excludeRbac: false          // New parameter
     ]
 
     config = defaultConfig + config
@@ -55,6 +57,8 @@ def call(Map config = [:]) {
                 println "Activity Threshold: ${ACTIVITY_THRESHOLD_DAYS} days"
                 println "Migration Depth (from right): ${config.migrationDepth}"
                 println "Target Controllers: ${config.targetControllers.join(', ')}"
+                println "Exclude Build History: ${config.excludeBuildHistory}"
+                println "Exclude RBAC: ${config.excludeRbac}"
                 println "=" * 60
             }
 
@@ -226,12 +230,18 @@ def call(Map config = [:]) {
             controllerIndex++
         }
 
-        def excludePatterns = [
-            '**/build.xml.tmp',
-            '**/workflow/*',
-            '**/builds/*/log',
-            '**/*.log'
-        ] + config.excludePatterns
+        // Dynamic exclude patterns based on configuration
+        def excludePatterns = ['**/build.xml.tmp', '**/workflow/*']
+        
+        if (config.excludeBuildHistory) {
+            excludePatterns += ['**/builds/*/log', '**/*.log']
+        }
+        
+        if (config.excludeRbac) {
+            excludePatterns += ['**/nectar-rbac.xml']
+        }
+        
+        excludePatterns += config.excludePatterns
 
         results = [
             activeFolders: activeFolders,
@@ -258,6 +268,9 @@ def call(Map config = [:]) {
             println ""
             println "Target Controller Assignments:"
             assignments.each { println "  ${it}" }
+            println ""
+            println "Exclude Patterns (${excludePatterns.size()}):"
+            excludePatterns.each { println "  - ${it}" }
         }
 
         if (!config.dryRun) {
