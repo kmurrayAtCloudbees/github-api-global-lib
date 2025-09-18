@@ -279,12 +279,35 @@ def call(Map config = [:]) {
             writeFile file: "${config.outputDir}/combined.txt", text: combinedFolders.join('\n')
             writeFile file: "${config.outputDir}/assignments.csv", text: "folder,target_controller,job_count\n" + assignments.join('\n')
             writeFile file: "${config.outputDir}/excludes.txt", text: excludePatterns.join('\n')
-
+        
+            // ==== NEW: Generate controller-level TXT files ====
+            def controllerFiles = [:].withDefault { [] }
+        
+            assignments.each { line ->
+                def parts = line.split(',')
+                if (parts.size() >= 2) {
+                    def folder = parts[0].trim()
+                    def controller = parts[1].trim()
+                    controllerFiles[controller] << folder
+                }
+            }
+        
+            controllerFiles.each { controller, folders ->
+                def fileName = "${config.outputDir}/${controller}.txt"
+                writeFile file: fileName, text: folders.join('\n')
+                if (config.verbose) {
+                    println "- ${fileName} (${folders.size()} folders)"
+                }
+            }
+        
             println "\n=== FILES GENERATED ==="
             println "- active.txt (${activeFolders.size()} folders)"
             println "- inactive.txt (${inactiveFolders.size()} folders)"
             println "- combined.txt (${combinedFolders.size()} folders)"
             println "- assignments.csv (${assignments.size()} assignments)"
+            controllerFiles.keySet().each { controller ->
+                println "- ${controller}.txt (${controllerFiles[controller].size()} folders)"
+            }
             println "- excludes.txt (${excludePatterns.size()} patterns)"
         } else {
             println "\n=== DRY RUN MODE — Files would be generated ==="
